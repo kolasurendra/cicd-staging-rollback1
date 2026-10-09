@@ -2,6 +2,14 @@ pipeline {
 
     agent any
 
+    parameters {
+        choice(
+            name: 'HEALTH_STATUS',
+            choices: ['healthy', 'unhealthy'],
+            description: 'Application health status for deployment testing'
+        )
+    }
+
     stages {
 
         stage('Checkout') {
@@ -32,6 +40,7 @@ pipeline {
                     docker run -d \
                         --name cicd-app-staging \
                         -p 8081:3000 \
+                        -e HEALTH_STATUS=${HEALTH_STATUS} \
                         cicd-app:${BUILD_NUMBER}
                 '''
             }
@@ -60,6 +69,26 @@ pipeline {
             }
         }
 
+        stage('Save Previous Production Version') {
+            steps {
+                sh '''
+                    if [ -f /opt/cicd/production-version.txt ]; then
+
+                        CURRENT_VERSION=$(cat /opt/cicd/production-version.txt)
+
+                        echo "Current production version: ${CURRENT_VERSION}"
+
+                        echo "${CURRENT_VERSION}" \
+                            > /opt/cicd/previous-production-version.txt
+
+                    else
+                        echo "No previous production version found."
+                        exit 1
+                    fi
+                '''
+            }
+        }
+
         stage('Deploy to Production') {
             steps {
                 sh '''
@@ -69,6 +98,7 @@ pipeline {
                     docker run -d \
                         --name cicd-app-production \
                         -p 8088:3000 \
+                        -e HEALTH_STATUS=${HEALTH_STATUS} \
                         cicd-app:${BUILD_NUMBER}
                 '''
             }
@@ -95,6 +125,67 @@ pipeline {
                     exit 1
                 '''
             }
+        }
+
+        stage('Record Successful Production Version') {
+            steps {
+                sh '''
+                    echo "${BUILD_NUMBER}" \
+                        > /opt/cicd/production-version.txt
+
+                    echo "Production version updated to ${BUILD_NUMBER}"
+                '''
+            }
+        }
+    }
+
+    post {
+
+        failure {
+
+            sh '''
+                echo "======================================"
+                echo "DEPLOYMENT FAILED"
+                echo "STARTING AUTOMATIC ROLLBACK"
+                echo "======================================"
+
+                PREVIOUS_VERSION=$(cat /opt/cicd/previous-production-version.txt)
+
+                echo "Rolling back to version: ${PREVIOUS_VERSION}"
+
+                docker stop cicd-app-production || true
+                docker rm cicd-app-production || true
+
+                docker run -d \
+                    --name cicd-app-production \
+                    -p 8088:3000 \
+                    -e HEALTH_STATUS=healthy \
+                    cicd-app:${PREVIOUS_VERSION}
+
+                echo "Rollback container started."
+
+                sleep 5
+
+                echo "Checking rollback health..."
+
+                if curl -f http://localhost:8088/health
+                then
+                    echo "======================================"
+                    echo "ROLLBACK SUCCESSFUL"
+                    echo "Production restored to version ${PREVIOUS_VERSION}"
+                    echo "======================================"
+
+                    echo "${PREVIOUS_VERSION}" \
+                        > /opt/cicd/production-version.txt
+
+                else
+                    echo "======================================"
+                    echo "ROLLBACK FAILED"
+                    echo "======================================"
+
+                    exit 1
+                fi
+            '''
         }
     }
 }
