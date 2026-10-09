@@ -59,5 +59,42 @@ pipeline {
                 '''
             }
         }
+
+        stage('Deploy to Production') {
+            steps {
+                sh '''
+                    docker stop cicd-app-production || true
+                    docker rm cicd-app-production || true
+
+                    docker run -d \
+                        --name cicd-app-production \
+                        -p 8088:3000 \
+                        cicd-app:${BUILD_NUMBER}
+                '''
+            }
+        }
+
+        stage('Health Check - Production') {
+            steps {
+                sh '''
+                    echo "Checking production application health..."
+
+                    for i in {1..10}
+                    do
+                        if curl -f http://localhost:8088/health
+                        then
+                            echo "Production health check PASSED"
+                            exit 0
+                        fi
+
+                        echo "Production health check failed. Retrying..."
+                        sleep 5
+                    done
+
+                    echo "Production health check FAILED"
+                    exit 1
+                '''
+            }
+        }
     }
 }
