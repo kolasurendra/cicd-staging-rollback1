@@ -22,5 +22,19 @@ pipeline {
                 sh 'docker build -t cicd-app:${BUILD_NUMBER} .'
             }
         }
+
+        stage('Deploy to Staging') {
+            steps {
+                sh '''
+                    docker stop cicd-app-staging || true
+                    docker rm cicd-app-staging || true
+
+                    docker run -d \
+                        --name cicd-app-staging \
+                        -p 8081:3000 \
+                        cicd-app:${BUILD_NUMBER}
+                '''
+            }
+        }
     }
 }
