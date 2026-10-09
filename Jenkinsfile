@@ -36,5 +36,28 @@ pipeline {
                 '''
             }
         }
+
+        stage('Health Check - Staging') {
+            steps {
+                sh '''
+                    echo "Checking staging application health..."
+
+                    for i in {1..10}
+                    do
+                        if curl -f http://localhost:8081/health
+                        then
+                            echo "Staging health check PASSED"
+                            exit 0
+                        fi
+
+                        echo "Health check failed. Retrying..."
+                        sleep 5
+                    done
+
+                    echo "Staging health check FAILED"
+                    exit 1
+                '''
+            }
+        }
     }
 }
