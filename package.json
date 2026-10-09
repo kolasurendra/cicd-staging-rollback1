@@ -1,0 +1,12 @@
+{
+  "name": "cicd-staging-rollback",
+  "version": "1.0.0",
+  "description": "CI/CD pipeline with staging, health check and rollback",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
